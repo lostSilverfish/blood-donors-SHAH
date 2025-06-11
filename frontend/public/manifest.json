@@ -1,0 +1,19 @@
+{
+  "short_name": "Blood Donors",
+  "name": "Blood Donor Management System",
+  "description": "Connect blood donors and save lives together",
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#dc2626",
+  "background_color": "#ffffff",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+} 
