@@ -21,44 +21,18 @@ if (process.env.NODE_ENV === "development") {
   app.set('trust proxy', 1);
 }
 
-// Security middleware
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        styleSrcElem: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        scriptSrc: ["'self'"],
-        imgSrc: ["'self'", "data:", "https:"],
-        connectSrc: ["'self'"],
-      },
-    },
-  })
-);
+// Security middleware - Disabled for internal network compatibility
+// Helmet security headers cause issues with HTTP internal network deployment
+// app.use(helmet());
 
-// CORS configuration
-const corsOptions = {
-  origin: function (origin, callback) {
-    const allowedOrigins = process.env.ALLOWED_ORIGINS
-      ? process.env.ALLOWED_ORIGINS.split(",")
-      : ["http://localhost:3000", "http://localhost:3001"];
-
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
+// CORS configuration - Allow all origins for internal network use
+app.use(cors({
+  origin: true, // Allow all origins
   credentials: true,
   optionsSuccessStatus: 200,
-};
-
-app.use(cors(corsOptions));
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -125,6 +99,20 @@ app.get("/health", (req, res) => {
   });
 });
 
+// Network diagnostic endpoint
+app.get("/network-test", (req, res) => {
+  res.json({
+    success: true,
+    message: "Network connection working!",
+    clientIp: req.ip,
+    userAgent: req.get('User-Agent'),
+    headers: req.headers,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+
+
 // API documentation endpoint
 app.get("/api", (req, res) => {
   res.json({
@@ -159,8 +147,17 @@ app.get("/api", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/donors", donorRoutes);
 
-// Serve static files from React build
-app.use(express.static(path.join(__dirname, "../frontend/build")));
+// Serve static files from React build with proper headers
+app.use(express.static(path.join(__dirname, "../frontend/build"), {
+  setHeaders: (res, path) => {
+    // Add cache headers for static assets
+    if (path.match(/\.(js|css)$/)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000'); // 1 year
+    } else if (path.match(/\.(html)$/)) {
+      res.setHeader('Cache-Control', 'no-cache'); // Don't cache HTML
+    }
+  }
+}));
 
 // Catch-all handler: send back React's index.html file for any non-API routes
 app.get("*", (req, res) => {
@@ -190,10 +187,13 @@ app.use((error, req, res, next) => {
     });
   }
 
-  if (error.message === "Not allowed by CORS") {
-    return res.status(403).json({
+
+
+  // Handle database connection errors
+  if (error.code === 'ECONNREFUSED' || error.code === 'ER_ACCESS_DENIED_ERROR') {
+    return res.status(500).json({
       success: false,
-      message: "CORS policy violation",
+      message: "Database connection error",
     });
   }
 
@@ -255,12 +255,13 @@ const startServer = async () => {
     // Initialize database tables
     await initializeDatabase();
 
-    // Start the server
-    const server = app.listen(PORT, () => {
+    // Start the server - Listen on all network interfaces for network access
+    const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Blood Donor API Server running on port ${PORT}`);
       console.log(`📊 Environment: ${process.env.NODE_ENV || "development"}`);
       console.log(`🔗 Health check: http://localhost:${PORT}/health`);
       console.log(`📖 API docs: http://localhost:${PORT}/api`);
+      console.log(`🌐 Network access enabled - accessible from other PCs`);
       console.log(`🩸 Ready to manage blood donors!`);
     });
 
